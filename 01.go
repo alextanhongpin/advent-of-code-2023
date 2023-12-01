@@ -1,8 +1,7 @@
-// You can edit this code!
-// Click here and start typing.
 package main
 
 import (
+	"bufio"
 	"fmt"
 	"regexp"
 	"strconv"
@@ -10,55 +9,67 @@ import (
 )
 
 func main() {
-	fmt.Println(parse(`1abc2
-	pqr3stu8vwx
-	a1b2c3d4e5f
-	treb7uchet`, false))
-	fmt.Println(parse(input, false))
-	fmt.Println(parse(input, true))
+	fmt.Println(parse(part1))            // 142
+	fmt.Println(parse(input))            // 54990
+	fmt.Println(parse(normalize(part2))) // 281
+	fmt.Println(parse(normalize(input))) // 54489
 }
 
-var mapping = map[string]string{
-	"one":   "1",
-	"two":   "2",
-	"three": "3",
-	"four":  "4",
-	"five":  "5",
-	"six":   "6",
-	"seven": "7",
-	"eight": "8",
-	"nine":  "9",
-}
+var replacer = strings.NewReplacer(
+	"one", "1",
+	"two", "2",
+	"three", "3",
+	"four", "4",
+	"five", "5",
+	"six", "6",
+	"seven", "7",
+	"eight", "8",
+	"nine", "9",
+)
 
-func parse(input string, natural bool) (int, error) {
-	var pattern = `[1-9]`
-	if natural {
-		pattern += `|one|two|three|four|five|six|seven|eight|nine`
-	}
+func parse(in string) (int, error) {
+	// This regex matches all digits from 1-9.
+	re := regexp.MustCompile(`[1-9]`)
+	
+	// Read line-by-line.
+	scanner := bufio.NewScanner(strings.NewReader(in))
+
 	var result int
-	lines := strings.Split(input, "\n")
-	re := regexp.MustCompile(pattern)
-	for _, line := range lines {
-		matches := re.FindAllStringSubmatch(line, -1)
-		first := matches[0][0]
-		last := matches[len(matches)-1][0]
-		if natural {
-			if v, ok := mapping[first]; ok {
-				first = v
-			}
-			if v, ok := mapping[last]; ok {
-				last = v
-			}
-		}
-		i, err := strconv.Atoi(first + last)
-		if err != nil {
-			return 0, err
-		}
-		result += i
-
+	for scanner.Scan() {
+		text := scanner.Text()
+		matches := re.FindAllString(text, -1)
+		result += toInt(matches[0] + matches[len(matches)-1])
 	}
+
 	return result, nil
 }
+
+// normalize replaces all "string" digits to "number",
+// e.g. "one" -> "1".
+func normalize(s string) string {
+	return replacer.Replace(s)
+}
+
+func toInt(s string) int {
+	n, err := strconv.Atoi(s)
+	if err != nil {
+		panic(err)
+	}
+	return n
+}
+
+var part1 = `1abc2
+pqr3stu8vwx
+a1b2c3d4e5f
+treb7uchet`
+
+var part2 = `two1nine
+eightwothree
+abcone2threexyz
+xtwone3four
+4nineeightseven2
+zoneight234
+7pqrstsixteen`
 
 var input = `2qlljdqcbeight
 eight47srvbfive
