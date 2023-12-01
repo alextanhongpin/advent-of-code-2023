@@ -4,17 +4,18 @@ package main
 
 import (
 	"fmt"
+	"regexp"
 	"strconv"
 	"strings"
 )
 
 func main() {
-	/*fmt.Println(parse(`1abc2
+	fmt.Println(parse(`1abc2
 	pqr3stu8vwx
 	a1b2c3d4e5f
-	treb7uchet`))
-		fmt.Println(parse(input))*/
-	fmt.Println(parse(input))
+	treb7uchet`, false))
+	fmt.Println(parse(input, false))
+	fmt.Println(parse(input, true))
 }
 
 var mapping = map[string]string{
@@ -29,27 +30,27 @@ var mapping = map[string]string{
 	"nine":  "9",
 }
 
-func parse(input string) (int, error) {
+func parse(input string, natural bool) (int, error) {
+	var pattern = `[1-9]`
+	if natural {
+		pattern += `|one|two|three|four|five|six|seven|eight|nine`
+	}
 	var result int
 	lines := strings.Split(input, "\n")
+	re := regexp.MustCompile(pattern)
 	for _, line := range lines {
-		var nums []string
-		for i, v := range line {
-			_, err := strconv.Atoi(string(v))
-			if err == nil {
-				nums = append(nums, string(v))
+		matches := re.FindAllStringSubmatch(line, -1)
+		first := matches[0][0]
+		last := matches[len(matches)-1][0]
+		if natural {
+			if v, ok := mapping[first]; ok {
+				first = v
 			}
-
-			part := line[:i+1]
-
-			for k, v := range mapping {
-				if strings.HasSuffix(part, k) {
-					nums = append(nums, v)
-				}
+			if v, ok := mapping[last]; ok {
+				last = v
 			}
 		}
-
-		i, err := strconv.Atoi(nums[0] + nums[len(nums)-1])
+		i, err := strconv.Atoi(first + last)
 		if err != nil {
 			return 0, err
 		}
