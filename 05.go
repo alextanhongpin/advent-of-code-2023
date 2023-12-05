@@ -4,6 +4,7 @@ package main
 
 import (
 	"fmt"
+	"math"
 	"regexp"
 	"strconv"
 	"strings"
@@ -11,139 +12,97 @@ import (
 
 func main() {
 	expand := true
-	fmt.Println(parse(example, !expand))
-	fmt.Println(parse(input, !expand))
-	fmt.Println(parse(example, expand))
-	fmt.Println(parse(input, expand))
+	fmt.Println(parse(example, !expand)) // 35
+	fmt.Println(parse(input, !expand))   // 551761867
+	fmt.Println(parse(example, expand))  // 46
+	fmt.Println(parse(input, expand))    // 57451709
+
 }
 
-func max(a, b int) int {
-	if a > b {
-		return a
-	}
-	return b
-}
+var digits = regexp.MustCompile(`(\d+)`)
 
-func min(nums ...int) int {
-	m := nums[0]
-	for _, n := range nums[1:] {
-		if n < m {
-			m = n
-		}
-	}
-	return m
-}
-
-var digitRe = regexp.MustCompile(`\d+`)
-
-type Range struct {
-	from int
-	to   int
-	dest int
-}
-
-func (r *Range) Overlap(n int) bool {
-	return n >= r.from && n <= r.to
-}
-
-func (r *Range) Intersect(n *Range) (*Range, bool) {
-	// Check if two ranges Intersect
-	if r.to <= n.from || r.from >= n.to {
-		return nil, false
-	}
-	// Find the intersection
-	from := max(r.from, n.from)
-	to := min(r.to, n.to)
-	return &Range{from, to, 0}, true
-}
-
-func (r *Range) Dest(n int) int {
-	return n - r.from + r.dest
-}
-
-func parse(in string, expand bool) int {
-	lines := strings.Split(in, "\n")
-
-	mappings := make(map[string][]Range)
+func parse(input string, expand bool) int {
+	lines := strings.Split(input, "\n")
 	seeds := strings.Fields(strings.ReplaceAll(lines[0], "seeds: ", ""))
-	var lastline string
-	for _, line := range lines[1:] {
-		line = strings.TrimSpace(line)
-		if len(line) == 0 {
-			continue
-		}
-		if strings.HasSuffix(line, "map:") {
-			line = strings.ReplaceAll(line, " map:", "")
-			mappings[line] = make([]Range, 0)
-			lastline = line
-		} else {
-			digits := digitRe.FindAllString(line, -1)
-			dest, source, rng := toInt(digits[0]), toInt(digits[1]), toInt(digits[2])
-			mappings[lastline] = append(mappings[lastline], Range{source, source + rng, dest})
-		}
-	}
 
-	var result []Range
-
-	if expand {
+	result := make(map[Interval]bool)
+	if !expand {
+		for _, seed := range seeds {
+			n := toInt(seed)
+			result[Interval{n, n}] = false
+		}
+	} else {
 		for i := 0; i < len(seeds); i += 2 {
 			start := toInt(seeds[i])
 			rng := toInt(seeds[i+1])
-			result = append(result, Range{start, start + rng - 1, 0})
-		}
-	} else {
-		for _, s := range seeds {
-			result = append(result, Range{toInt(s), toInt(s), 0})
+			result[Interval{start: start, end: start + rng - 1}] = false
 		}
 	}
-
-	start := "seed"
-	for {
-		for k, v := range mappings {
-			if !strings.HasPrefix(k, start) {
-				continue
+	tmp := make(map[Interval]bool)
+	for _, line := range lines[2:] {
+		if len(line) == 0 {
+			for k := range tmp {
+				result[k] = false
 			}
-			delete(mappings, k)
-			_, next, ok := strings.Cut(k, "-to-")
-			if !ok {
-				panic("invalid")
-			}
-			start = next
-
-			out := make([]Range, 0)
-			for _, n := range result {
-				overlap := false
-				for _, r := range v {
-					r := r
-					if in, ok := n.Intersect(&r); ok {
-						out = append(out, Range{r.Dest(in.from), r.Dest(in.to), 0})
-						overlap = true
-					}
-				}
-				if !overlap {
-					out = append(out, Range{n.from, n.to, 0})
+			for k, v := range result {
+				if v {
+					delete(result, k)
 				}
 			}
-			result = out
+			clear(tmp)
+			continue
 		}
-		if len(mappings) == 0 {
-			break
+		if strings.Contains(line, "map") {
+			continue
+		}
+		nums := digits.FindAllString(line, -1)
+		dst, src, rng := toInt(nums[0]), toInt(nums[1]), toInt(nums[2])
+		r := Interval{start: src, end: src + rng - 1}
+
+		for k := range result {
+			v, ok := k.Intersect(r)
+			if ok {
+				result[k] = true
+				tmp[Interval{v.start - src + dst, v.end - src + dst}] = false
+			}
 		}
 	}
 
-	var min = result[0].from
-	if result[0].to < min {
-		min = result[0].to
+	n := math.MaxInt
+	for k := range tmp {
+		result[k] = false
 	}
-	for _, r := range result[1:] {
-		if r.from < min {
-			min = r.from
-		}
-		if r.to < min {
-			min = r.to
+	for k, v := range result {
+		if v {
+			delete(result, k)
 		}
 	}
-	return min
+	clear(tmp)
+	for k := range result {
+		if k.start < n {
+			n = k.start
+		}
+		if k.end < n {
+			n = k.end
+		}
+	}
+	return n
+}
+
+type Interval struct {
+	start int
+	end   int
+}
+
+func (i Interval) Overlap(other Interval) bool {
+	return other.start <= i.end && i.start <= other.end
+}
+
+func (i Interval) Intersect(other Interval) (Interval, bool) {
+	if !i.Overlap(other) {
+		return Interval{}, false
+	}
+	return Interval{max(i.start, other.start), min(i.end, other.end) - 1}, true
 }
 
 func toInt(s string) int {
