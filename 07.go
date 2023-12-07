@@ -5,17 +5,25 @@ package main
 import (
 	"fmt"
 	"slices"
+	"sort"
 	"strconv"
 	"strings"
 )
 
+var typeRank = strings.Fields("5k 4k full 3k 2p 1p high")
+var cardRank = strings.Split("A, K, Q, J, T, 9, 8, 7, 6, 5, 4, 3, 2", ", ")
+
+// Globals are bad :) Use responsibly.
+var joker = false
+
 func main() {
-	joker := true
-	fmt.Println(eval(parse(example), !joker))
-	fmt.Println(eval(parse(input), !joker))
-	cardRanks = strings.Split("A, K, Q, T, 9, 8, 7, 6, 5, 4, 3, 2, J", ", ")
-	fmt.Println(eval(parse(example), joker))
-	fmt.Println(eval(parse(input), joker)) // 250578595
+	fmt.Println(eval(example)) // 6440
+	fmt.Println(eval(input))   // 251121738
+	joker = true
+
+	cardRank = strings.Split("A, K, Q, T, 9, 8, 7, 6, 5, 4, 3, 2, J", ", ")
+	fmt.Println(eval(example)) // 5905
+	fmt.Println(eval(input))   // 251421071
 }
 
 type Hand struct {
@@ -23,180 +31,130 @@ type Hand struct {
 	Bid  int
 }
 
-func eval(hands []Hand, joker bool) int {
-	slices.SortFunc(hands, func(a, b Hand) int {
-		return compareHand(a.Card, b.Card, joker)
-	})
-	var result int
-	for i, h := range hands {
-		result += (len(hands) - i) * h.Bid
-	}
-	return result
-}
+func eval(input string) int {
+	lines := strings.Split(input, "\n")
 
-func parse(s string) []Hand {
-	var result []Hand
-	lines := strings.Split(s, "\n")
-	for _, line := range lines {
-		hand, bid, ok := strings.Cut(line, " ")
+	hands := make([]Hand, len(lines))
+	for i, line := range lines {
+		card, bid, ok := strings.Cut(line, " ")
 		if !ok {
 			panic("invalid")
 		}
-		n, err := strconv.Atoi(bid)
+		bidInt, err := strconv.Atoi(bid)
 		if err != nil {
 			panic(err)
 		}
-		result = append(result, Hand{Card: hand, Bid: n})
+		hands[i] = Hand{Card: card, Bid: bidInt}
+	}
+
+	slices.SortFunc(hands, func(a, b Hand) int {
+		return cmp(a.Card, b.Card)
+	})
+
+	var result int
+	for i, hand := range hands {
+		result += (len(hands) - i) * hand.Bid
 	}
 	return result
 }
 
-func cardType(hand string, joker bool) string {
-	if !joker {
-		return cardTypeNoJoker(hand)
+func cmp(a, b string) int {
+	// Compare type first.
+	at, bt := getType(a), getType(b)
+	ai := slices.Index(typeRank, at)
+	bi := slices.Index(typeRank, bt)
+	if ai < bi {
+		return -1
+	}
+	if ai > bi {
+		return 1
 	}
 
-	return cardTypeJoker(hand)
+	// Compare individual card, from left to right.
+	for i := 0; i < len(a); i++ {
+		ai := slices.Index(cardRank, string(a[i]))
+		bi := slices.Index(cardRank, string(b[i]))
+		if ai < bi {
+			return -1
+		}
+		if ai > bi {
+			return 1
+		}
+	}
+	return 0
 }
 
-func cardTypeJoker(hand string) string {
+func getType(hand string) string {
 	m := make(map[rune]int)
 	for _, r := range hand {
 		m[r]++
 	}
-
-	j := m['J']
-	if j == 0 {
-		return cardTypeNoJoker(hand)
+	var j int
+	if joker {
+		j = m['J']
+		delete(m, 'J')
+		if j == 5 {
+			return "5k"
+		}
 	}
-
-	delete(m, 'J')
-
-	var has3 bool
-	var has2 int
+	counts := make([]int, 0, len(m))
 	for _, n := range m {
-		if n == 4 {
-			return "5k"
-		}
-		if n == 3 {
-			has3 = true
-		}
-		if n == 2 {
-			has2++
-		}
+		counts = append(counts, n)
 	}
-	if j == 5 {
-		return "5k"
-	}
-	if j == 4 {
-		return "5k"
-	}
-	if j == 3 {
-		if has2 == 1 {
-			return "5k"
-		}
-		return "4k"
-	}
-
-	if j == 2 {
-		if has3 {
-			return "5k"
-		}
-		if has2 == 1 {
-			return "4k"
-		}
-		return "3k"
-	}
-
-	if j == 1 {
-		if has3 {
-			return "4k"
-		}
-		if has2 == 2 {
-			return "full"
-		}
-		if has2 == 1 {
+	sort.Ints(counts)
+	last := counts[len(counts)-1]
+	switch len(counts) {
+	case 5:
+		return "high"
+	case 4:
+		// 1, 1, 1, 2
+		return "1p"
+	case 3:
+		if joker && j > 0 {
+			// 1, 1, 1 + 2J
+			// 1, 1, 2 + 1J
 			return "3k"
 		}
-	}
-
-	return "1p"
-}
-
-func cardTypeNoJoker(hand string) string {
-	m := make(map[rune]int)
-	for _, r := range hand {
-		m[r]++
-	}
-
-	if len(m) == 5 {
-		return "high"
-	}
-
-	if len(m) == 4 {
-
-		return "1p"
-	}
-	var has3 bool
-	var has2 int
-	for _, n := range m {
-		if n == 5 {
-			return "5k"
+		// 1, 1, 3
+		if last == 3 {
+			return "3k"
 		}
-		if n == 4 {
-			return "4k"
-		}
-		if n == 3 {
-			has3 = true
-		}
-		if n == 2 {
-			has2++
-		}
-	}
-	if has3 && has2 == 1 {
-		return "full"
-	}
-	if has3 {
-		return "3k"
-	}
-	if has2 == 2 {
+		// 1, 2, 2
 		return "2p"
-	}
-	return ""
-}
+	case 2:
+		if joker && j > 0 {
+			first := counts[0]
 
-var handRanks = []string{"5k", "4k", "full", "3k", "2p", "1p", "high", ""}
-var cardRanks = strings.Split("A, K, Q, J, T, 9, 8, 7, 6, 5, 4, 3, 2", ", ")
-
-func getCardRank(card string) int {
-	return slices.Index(cardRanks, card)
-}
-
-func getHandRank(hand string) int {
-	return slices.Index(handRanks, hand)
-}
-
-func compareRank(a, b string, cmp func(s string) int) int {
-	ra, rb := cmp(a), cmp(b)
-	if ra < rb {
-		return -1
-	} else if ra == rb {
-		return 0
-	}
-	return 1
-}
-
-func compareHand(a, b string, joker bool) int {
-	h := compareRank(cardType(a, joker), cardType(b, joker), getHandRank)
-	if h == 0 {
-		for i := 0; i < len(a); i++ {
-			if r := compareRank(string(a[i]), string(b[i]), getCardRank); r != 0 {
-				return r
+			if first == 1 {
+				// 1, 1 + 3J
+				// 1, 2 + 2J
+				// 1, 3 + 1J
+				return "4k"
+			}
+			if first == 2 {
+				// 2, 2 + 1J
+				if last == 2 {
+					return "full"
+				}
+				// 2, 1 + 2j
+				if last == 1 {
+					return "4k"
+				}
 			}
 		}
+		// 1, 4
+		if last == 4 {
+			return "4k"
+		}
+		// 2, 3
+		if last == 3 {
+			return "full"
+		}
+	case 1:
+		// 5
+		return "5k"
 	}
-
-	return h
+	return ""
 }
 
 var example = `32T3K 765
