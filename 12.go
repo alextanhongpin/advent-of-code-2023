@@ -16,22 +16,10 @@ func main() {
 	fmt.Println(solve(example, 1)) // 21
 	fmt.Println(solve(input, 1))   // 7090
 	fmt.Println(solve(example, 5)) // 525152
-	fmt.Println(solve(input, 5))   // 6792010726878 (part 2 is wrong)
+	fmt.Println(solve(input, 5))   // 6792010726878
 }
 
 func parse(in string, repeat int, cache map[string]int) int {
-	if repeat > 2 {
-		a := parse(in, 1, cache)
-		b := parse(in, 2, cache)
-		c := b / a
-		var result = a
-		for i := 1; i < repeat; i++ {
-			result *= c
-		}
-
-		return result
-	}
-
 	lhs, rhs, ok := strings.Cut(in, " ")
 	if !ok {
 		panic("invalid")
@@ -48,97 +36,78 @@ func parse(in string, repeat int, cache map[string]int) int {
 	rhs = strings.Join(rhss, ",")
 
 	lengths := strings.Split(rhs, ",")
-
-	return dp2(lhs, lengths, cache)
+	return dp(lhs, lengths, cache)
 }
 
-func cmp(s string, lengths []string) bool {
-	matches := re.FindAllString(s, -1)
-	if len(matches) != len(lengths) {
-		return false
-	}
-
-	for i, m := range matches {
-		if len(m) != toInt(lengths[i]) {
-			return false
-		}
-	}
-
-	return true
-}
-
-func dp2(line string, lengths []string, cache map[string]int) int {
+func clean(line string) string {
 	for strings.HasPrefix(line, ".") {
 		line = strings.TrimPrefix(line, ".")
 	}
+
 	for strings.HasSuffix(line, ".") {
 		line = strings.TrimSuffix(line, ".")
 	}
+	line = strings.Join(sep.Split(line, -1), ".")
+
+	return line
+}
+
+func buildKey(line string, lengths []string) string {
+	line = clean(line)
 	matches := sep.Split(line, -1)
+	return strings.Join(matches, ".") + ":" + strings.Join(lengths, ",")
+}
 
-	key := line + ":" + strings.Join(lengths, ",")
-	if v, ok := cache[key]; ok {
-		return v
+func dp(line string, lengths []string, cache map[string]int) int {
+	if len(lengths) == 0 {
+		if strings.Contains(line, "#") {
+			return 0
+		}
+
+		return 1
 	}
-	c := min(len(matches), len(lengths))
-
-	var valid = true
-	for i, m := range matches[:c] {
-		if strings.Contains(m, "?") {
-			break
-		}
-		n := toInt(lengths[i])
-		if len(m) != n {
-			valid = false
-			break
+	if len(line) == 0 {
+		if len(lengths) == 0 {
+			return 1
 		}
 
-		j := strings.Index(line, "#")
-		hi := j + n
-		if hi+1 < len(line) {
-			hi += 1
-		}
-		line = strings.Join(matches[i+1:], ".")
-		key := line + ":" + strings.Join(lengths[i+1:], ",")
-		if n, ok := cache[key]; ok {
-			return n
-		}
-		cache[key] = dp2(line, lengths[i+1:], cache)
-		return cache[key]
-	}
-	if !valid {
-		cache[key] = 0
 		return 0
 	}
 
-	if strings.Contains(line, "?") {
+	line = clean(line)
+	n := toInt(lengths[0])
+
+	if n > len(line) {
+		return 0
+	}
+
+	key := buildKey(line, lengths)
+	if line[0] == '?' {
 		lhs := strings.Replace(line, "?", ".", 1)
 		rhs := strings.Replace(line, "?", "#", 1)
-		cache[key] = dp2(lhs, lengths, cache) + dp2(rhs, lengths, cache)
+
+		cache[key] = dp(lhs, lengths, cache) + dp(rhs, lengths, cache)
 		return cache[key]
 	}
 
-	if cmp(line, lengths) {
-		cache[key] = 1
-		return 1
+	// Starts with #
+	part := line[:n]
+	if strings.Contains(part, ".") {
+		return 0
 	}
 
-	cache[key] = 0
-	return 0
-}
-
-func dp(line string, lengths []string) int {
-	if strings.Contains(line, "?") {
-		lhs := strings.Replace(line, "?", ".", 1)
-		rhs := strings.Replace(line, "?", "#", 1)
-		return dp(lhs, lengths) + dp(rhs, lengths)
+	if len(part) < len(line) {
+		if line[len(part)] == '#' {
+			return 0
+		}
 	}
 
-	if cmp(line, lengths) {
-		return 1
+	if v, ok := cache[key]; ok {
+		return v
 	}
 
-	return 0
+	cache[key] = dp(line[min(n+1, len(line)):], lengths[1:], cache)
+	return cache[key]
 }
 
 func solve(in string, n int) int {
