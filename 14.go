@@ -10,6 +10,7 @@ func main() {
 	fmt.Println(solve(example, 1, 1))          // 136
 	fmt.Println(solve(input, 1, 1))            // 105784
 	fmt.Println(solve(example, 1000000000, 4)) // 64
+	fmt.Println(solve(input, 1000000000, 4))   // 91286
 }
 
 func draw(static map[Point]rune) string {
@@ -49,157 +50,155 @@ func cmp(a, b int) int {
 	return 0
 }
 
-func solve(in string, n int, cycle int) int {
-	target := n
-	dir := "uldr"
+func solve(in string, n int, iter int) (load int) {
+	cache := make(map[string]int)
+	loadByStep := make(map[int]int)
+	var i int
+	var checkCycle bool = true
 
-	var a, b string
-	seen := make([]string, 50)
-	for n > 0 {
-		for i := 0; i < cycle; i++ {
-			d := dir[i%len(dir)]
-			grid, static, balls := parse(in)
+	for i <= n {
+		in, load = cycle(in, iter)
+		if last, ok := cache[in]; ok && checkCycle {
+			cycle := i - last
+			cycleBegin := i - cycle
 
-			slices.SortFunc(balls, func(a, b Point) int {
-				switch d {
-				case 'u':
-					// top to bottom, left to right
-					if a.y == b.y {
-						return cmp(a.x, b.x)
-					}
-					return cmp(a.y, b.y)
-				case 'd':
-					if a.y == b.y {
-						return cmp(a.x, b.x)
-					}
-					// down first, then up
-					return cmp(b.y, a.y)
-				case 'l':
-					// left first, then right
-					if a.y == b.y {
-						return cmp(a.x, b.x)
-					}
-					return cmp(a.y, b.y)
-				case 'r':
-					if a.y == b.y {
-						// Right first, then left
-						return cmp(b.x, a.x)
-					}
-					return cmp(a.y, b.y)
-				}
-
-				return 0
-			})
-			for len(balls) > 0 {
-				//draw(static)
-				var keep []Point
-				for _, ball := range balls {
-					x := ball.x
-					y := ball.y
-					switch d {
-					case 'u':
-						y--
-					case 'd':
-						y++
-					case 'l':
-						x--
-					case 'r':
-						x++
-					}
-					pos := Point{x, y}
-
-					if !grid[pos] {
-						static[ball] = 'O'
-						continue
-					}
-					// Is there something else there?
-					if _, ok := static[pos]; ok {
-						static[ball] = 'O'
-						continue
-					}
-					keep = append(keep, pos)
-				}
-				balls = keep
-			}
-			newin := draw(static)
-
-			if i == cycle-1 {
-				n--
-			}
-
-			var maxY int
-			for p := range grid {
-				maxY = max(maxY, p.y)
-			}
-			maxY += 1
-
-			var result int
-			for p, c := range static {
-				if c != 'O' {
-					continue
-				}
-				load := maxY - p.y
-				result += load
-			}
-
-			key := (n + 1) % len(seen)
-			if (n+1)%len(seen) == 0 {
-				if a == "" {
-					a = strings.Join(seen, ",")
-				} else {
-					b = strings.Join(seen, ",")
-					var count int
-					for i := 0; i < len(a); i++ {
-						if a[i] != b[i] {
-
-							break
-						}
-						count++
-					}
-
-					_ = target
-					//m := target - (n + 1)
-					//left := m / len(seen)
-					//m -= left * len(seen)
-					//n = target - m
-					a = b
-					b = ""
-				}
-				clear(seen)
-				// Reset.
-			}
-			seen[key] = fmt.Sprint(result)
-			if i == 3 {
-				fmt.Println(n+1, result, i, seen)
-			}
-			if n == 0 && i == cycle-1 {
-				return result
-			}
-
-			in = newin
+			left := (n - i - 1) % cycle
+			return loadByStep[cycleBegin+left]
 		}
+		loadByStep[i] = load
+		cache[in] = i
+		i++
 	}
-
-	panic("invalid")
+	return load
 }
 
-func parse(in string) (map[Point]bool, map[Point]rune, []Point) {
-	var points []Point
-	grid := make(map[Point]bool)
-	static := make(map[Point]rune)
+func cycle(in string, n int) (out string, load int) {
+	dir := "uldr"
+
+	// We only use this to determine the boundary.
+	grid := parseGrid(in)
+
+	for i := 0; i < n; i++ {
+		d := dir[i%len(dir)]
+		static := parseStatic(in)
+		rocks := parseRocks(in)
+
+		slices.SortFunc(rocks, func(a, b Point) int {
+			switch d {
+			case 'u':
+				// top to bottom, left to right
+				if a.y == b.y {
+					return cmp(a.x, b.x)
+				}
+				return cmp(a.y, b.y)
+			case 'd':
+				if a.y == b.y {
+					return cmp(a.x, b.x)
+				}
+				// down first, then up
+				return cmp(b.y, a.y)
+			case 'l':
+				// left first, then right
+				if a.y == b.y {
+					return cmp(a.x, b.x)
+				}
+				return cmp(a.y, b.y)
+			case 'r':
+				if a.y == b.y {
+					// Right first, then left
+					return cmp(b.x, a.x)
+				}
+				return cmp(a.y, b.y)
+			}
+
+			return 0
+		})
+		for len(rocks) > 0 {
+			var keep []Point
+			for _, ball := range rocks {
+				x := ball.x
+				y := ball.y
+				switch d {
+				case 'u':
+					y--
+				case 'd':
+					y++
+				case 'l':
+					x--
+				case 'r':
+					x++
+				}
+				pos := Point{x, y}
+
+				// The rock is out of bound.
+				if _, ok := grid[pos]; !ok {
+					static[ball] = 'O'
+					continue
+				}
+				// There's an obstacle, the rock can no longer move.
+				if _, ok := static[pos]; ok {
+					static[ball] = 'O'
+					continue
+				}
+				keep = append(keep, pos)
+			}
+			rocks = keep
+		}
+
+		out = draw(static)
+
+		var maxY int
+		for p := range grid {
+			maxY = max(maxY, p.y)
+		}
+		maxY += 1
+
+		load = 0
+		for p, c := range static {
+			if c != 'O' {
+				continue
+			}
+			load += maxY - p.y
+		}
+
+		in = out
+	}
+
+	return
+}
+
+func parseStatic(in string) map[Point]rune {
+	m := make(map[Point]rune)
 	for y, line := range strings.Split(in, "\n") {
 		for x, r := range line {
-			p := Point{x, y}
 			if r == '#' {
-				static[p] = r
-			}
-			grid[p] = true
-			if r == 'O' {
-				points = append(points, p)
+				m[Point{x, y}] = r
 			}
 		}
 	}
-	return grid, static, points
+	return m
+}
+
+func parseRocks(in string) []Point {
+	var rocks []Point
+	for y, line := range strings.Split(in, "\n") {
+		for x, r := range line {
+			if r == 'O' {
+				rocks = append(rocks, Point{x, y})
+			}
+		}
+	}
+	return rocks
+}
+
+func parseGrid(in string) map[Point]rune {
+	m := make(map[Point]rune)
+	for y, line := range strings.Split(in, "\n") {
+		for x, r := range line {
+			m[Point{x, y}] = r
+		}
+	}
+	return m
 }
 
 var example = `O....#....
