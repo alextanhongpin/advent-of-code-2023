@@ -2,7 +2,6 @@ package main
 
 import (
 	"fmt"
-	"math"
 	"strings"
 
 	"golang.org/x/exp/maps"
@@ -11,8 +10,8 @@ import (
 func main() {
 	fmt.Println(solve(example, false)) // 405
 	fmt.Println(solve(input, false))   // 35360
-	fmt.Println(solve(example, true))  // 405
-	fmt.Println(solve(input, true))    // 35360
+	fmt.Println(solve(example, true))  // 400
+	fmt.Println(solve(input, true))    // 36775
 }
 
 func solve(in string, fix bool) int {
@@ -20,14 +19,17 @@ func solve(in string, fix bool) int {
 
 	sections := strings.Split(in, "\n\n")
 	for _, s := range sections {
+		s = strings.TrimSpace(s)
 		v := parse(s)
 		if fix {
 			result += fixSmudge(v)
 		} else {
 			n, ok := getReflect(v)
-			if ok {
-				result += n
+			if !ok {
+				panic("hello")
 			}
+
+			result += n[0]
 		}
 	}
 	return result
@@ -49,68 +51,71 @@ func fixSmudge(grid map[Point]bool) int {
 		maxY = max(maxY, p.y)
 	}
 
-	var result = math.MaxInt
+	// This is what we are supposed to get without smudge.
+	o, ok := getReflect(grid)
+	if !ok {
+		panic("invalid")
+	}
+
+	// Go through each point, and update the smudge.
 	for y := 0; y <= maxY; y++ {
 		for x := 0; x <= maxX; x++ {
-			newGrid := maps.Clone(grid)
 			p := Point{x, y}
-			if newGrid[p] {
-				delete(newGrid, p)
-			} else {
-				newGrid[p] = true
-			}
-			if n, ok := getReflect(newGrid); ok {
-				result = min(result, n)
+			newGrid := maps.Clone(grid)
+			newGrid[p] = !newGrid[p]
+			n, ok := getReflect(newGrid)
+			if ok {
+				for _, j := range n {
+					if j != o[0] {
+						return j
+					}
+				}
 			}
 		}
 	}
-	return result
+
+	return o[0]
 }
 
-func getReflect(grid map[Point]bool) (int, bool) {
+func getReflect(grid map[Point]bool) ([]int, bool) {
 	var maxX, maxY int
 	for p := range grid {
 		maxX = max(maxX, p.x)
 		maxY = max(maxY, p.y)
 	}
 
-	cache := make(map[string]int)
 	cacheByY := make(map[int]string)
 	cacheByX := make(map[int]string)
 	var rngs []Range
 
 	// Find horizontal (y-min, y-max) reflection.
 	for y := 0; y <= maxY; y++ {
-		var xs []string
+		var xs []int
 		for x := 0; x <= maxX; x++ {
 			if grid[Point{x, y}] {
-				xs = append(xs, fmt.Sprint(x))
+				xs = append(xs, x)
 			}
 		}
-		key := strings.Join(xs, ",")
-		cacheByY[y] = key
-		if yPrev, ok := cache[key]; ok && y == yPrev+1 {
-			rngs = append(rngs, Range{yPrev, y, "horizontal"})
+		cacheByY[y] = fmt.Sprint(xs)
+		if cacheByY[y-1] == cacheByY[y] {
+			rngs = append(rngs, Range{y - 1, y, "horizontal"})
 		}
-		cache[key] = y
 	}
 
-	clear(cache)
 	// Find vertical (x-min, x-max) reflection.
 	for x := 0; x <= maxX; x++ {
-		var ys []string
+		var ys []int
 		for y := 0; y <= maxY; y++ {
 			if grid[Point{x, y}] {
-				ys = append(ys, fmt.Sprint(y))
+				ys = append(ys, y)
 			}
 		}
-		key := strings.Join(ys, ",")
-		cacheByX[x] = key
-		if xPrev, ok := cache[key]; ok && x == xPrev+1 {
-			rngs = append(rngs, Range{xPrev, x, "vertical"})
+		cacheByX[x] = fmt.Sprint(ys)
+		if cacheByX[x-1] == cacheByX[x] {
+			rngs = append(rngs, Range{x - 1, x, "vertical"})
 		}
-		cache[key] = x
 	}
+	result := []int{}
 
 	for _, r := range rngs {
 		if r.dir == "horizontal" {
@@ -123,10 +128,10 @@ func getReflect(grid map[Point]bool) (int, bool) {
 					valid = false
 					break
 				}
-
 			}
 			if valid {
-				return r.max * 100, true
+				result = append(result, r.max*100)
+				//return r.max * 100, true
 			}
 			continue
 		}
@@ -140,13 +145,18 @@ func getReflect(grid map[Point]bool) (int, bool) {
 				valid = false
 				break
 			}
-
 		}
 		if valid {
-			return r.max, true
+			result = append(result, r.max)
+			//return r.max, true
 		}
 	}
-	return 0, false
+
+	if len(result) > 0 {
+		return result, true
+	}
+
+	return nil, false
 }
 
 func parse(in string) map[Point]bool {
@@ -154,11 +164,7 @@ func parse(in string) map[Point]bool {
 	res := make(map[Point]bool)
 	for y, line := range lines {
 		for x, c := range line {
-			if c != '#' {
-				continue
-			}
-
-			res[Point{x, y}] = true
+			res[Point{x, y}] = c == '#'
 		}
 	}
 	return res
