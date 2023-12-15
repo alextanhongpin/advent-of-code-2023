@@ -1,15 +1,16 @@
-// You can edit this code!
-// Click here and start typing.
 package main
 
 import (
 	"fmt"
+	"strconv"
 	"strings"
 )
 
 func main() {
 	fmt.Println(solve(example)) // 1320
-	fmt.Println(solve(input)) // 519041
+	fmt.Println(solve(input))   // 519041
+	fmt.Println(part2(example)) // 145
+	fmt.Println(part2(input))   // 260530
 }
 
 func solve(in string) int {
@@ -28,6 +29,64 @@ func hash(s string) int {
 		result += int(c)
 		result *= 17
 		result %= 256
+	}
+
+	return result
+}
+
+type Box struct {
+	Label string
+	Focal int
+}
+
+func part2(in string) int {
+	var result int
+	lines := strings.Split(in, ",")
+	boxes := make(map[int][]Box)
+	for _, line := range lines {
+		if strings.Contains(line, "=") {
+			lhs, rhs, ok := strings.Cut(line, "=")
+			if !ok {
+				panic("invalid")
+			}
+			label := hash(lhs)
+			focal, err := strconv.Atoi(rhs)
+			if err != nil {
+				panic(err)
+			}
+			box := boxes[label]
+			var i = -1
+			for j, b := range box {
+				if b.Label == lhs {
+					i = j
+					break
+				}
+			}
+			if i > -1 {
+				box[i] = Box{lhs, focal}
+			} else {
+				box = append(box, Box{lhs, focal})
+			}
+			boxes[label] = box
+		} else {
+			label := strings.TrimSuffix(line, "-")
+			i := hash(label)
+			box := boxes[i]
+			var newbox []Box
+			for _, b := range box {
+				if b.Label != label {
+					newbox = append(newbox, b)
+				}
+			}
+			boxes[i] = newbox
+		}
+	}
+
+	for i, box := range boxes {
+		power := i + 1
+		for j, b := range box {
+			result += power * (j + 1) * b.Focal
+		}
 	}
 
 	return result
