@@ -53,12 +53,11 @@ func cmp(a, b int) int {
 func solve(in string, n int, iter int) (load int) {
 	cache := make(map[string]int)
 	loadByStep := make(map[int]int)
-	var i int
-	var checkCycle bool = true
 
+	var i int
 	for i <= n {
 		in, load = cycle(in, iter)
-		if last, ok := cache[in]; ok && checkCycle {
+		if last, ok := cache[in]; ok {
 			cycle := i - last
 			cycleBegin := i - cycle
 
@@ -69,6 +68,7 @@ func solve(in string, n int, iter int) (load int) {
 		cache[in] = i
 		i++
 	}
+
 	return load
 }
 
