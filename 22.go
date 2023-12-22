@@ -16,107 +16,99 @@ func main() {
 	fmt.Println(solve(input))   // 473, 61045
 }
 
-func solve(in string) (chain int, count int) {
-	blocks := parse(in)
-	blocks, _ = simulate(blocks, floor)
+func solve(in string) (count int, chain int) {
+	bricks := parse(in)
+	_ = simulateFall(bricks)
 
-	for i := 0; i < len(blocks); i++ {
-		var exclude []Line
-		exclude = append(exclude, blocks[:i]...)
-		exclude = append(exclude, blocks[i+1:]...)
+	for i := 0; i < len(bricks); i++ {
+		var exclude []Brick
+		exclude = append(exclude, bricks[:i]...)
+		exclude = append(exclude, bricks[i+1:]...)
 
-		if _, n := simulate(exclude, floor); n == 0 {
-			count++
-		} else {
-			chain += n
-		}
-	}
-
-	return count, chain
-}
-
-func simulate(blocks []Line, floor int) (parent []Line, count int) {
-	for _, b := range blocks {
-
-		z := floor
-		for i := len(parent) - 1; i > -1; i-- {
-			p := parent[i]
-			if b.IntersectXY(p) {
-				z = max(z, p.MaxZ()+1)
-			}
-		}
-		if b.Z() != z {
+		n := simulateFall(exclude)
+		// Can disintegrate if there are no changes.
+		if n == 0 {
 			count++
 		}
-
-		b = b.Down(b.Z() - z)
-		parent = append(parent, b)
+		chain += n
 	}
 
 	return
 }
 
-func parse(in string) []Line {
-	lines := strings.Split(in, "\n")
-	result := make([]Line, len(lines))
-	for i, line := range lines {
-		var p0, p1 Point
-		fmt.Fscanf(strings.NewReader(line), "%d,%d,%d~%d,%d,%d", &p0.x, &p0.y, &p0.z, &p1.x, &p1.y, &p1.z)
-		result[i] = Line{p0, p1}
+func simulateFall(bricks []Brick) (count int) {
+	for i, b := range bricks {
+		z := floor
+
+		// Check the bricks below and see if they overlap.
+		for _, bp := range bricks[:i] {
+			if bp.Overlap(b) {
+				// If it overlaps, the current brick must be above the previous brick.
+				z = max(z, bp.z[1]+1)
+			}
+		}
+
+		// How many bricks did move down?
+		if b.z[0] != z {
+			count++
+		}
+
+		// Move the bricks until it is above the floor or the previous bricks.
+		bricks[i] = b.Down(b.z[0] - z)
 	}
 
-	// Dumb, I forgot to sort the whole time.
-	slices.SortFunc(result, func(a, b Line) int {
-		return cmp.Compare(a.p0.z, b.p0.z)
-	})
-
-	return result
+	return
 }
 
-type Line struct {
-	p0 Point
-	p1 Point
+func parse(in string) []Brick {
+	lines := strings.Split(in, "\n")
+
+	bricks := make([]Brick, len(lines))
+	for i, line := range lines {
+		bricks[i] = makeBrick(line)
+	}
+
+	// Sort by z.
+	slices.SortFunc(bricks, func(a, b Brick) int {
+		return cmp.Compare(a.z[0], b.z[0])
+	})
+
+	return bricks
 }
 
-func (l1 Line) IntersectXY(l2 Line) bool {
-	x := l1.intersect(l2, func(p Point) int {
-		return p.x
-	})
-	y := l1.intersect(l2, func(p Point) int {
-		return p.y
-	})
+type Brick struct {
+	x [2]int
+	y [2]int
+	z [2]int
+}
+
+func makeBrick(s string) Brick {
+	var x0, x1, y0, y1, z0, z1 int
+	_, err := fmt.Fscanf(strings.NewReader(s), "%d,%d,%d~%d,%d,%d", &x0, &y0, &z0, &x1, &y1, &z1)
+	if err != nil {
+		panic(err)
+	}
+
+	return Brick{
+		x: [2]int{min(x0, x1), max(x0, x1)},
+		y: [2]int{min(y0, y1), max(y0, y1)},
+		z: [2]int{min(z0, z1), max(z0, z1)},
+	}
+}
+
+func (b1 Brick) Overlap(b2 Brick) bool {
+	x := b2.x[0] <= b1.x[1] && b2.x[1] >= b1.x[0]
+	y := b2.y[0] <= b1.y[1] && b2.y[1] >= b1.y[0]
 	return x && y
 }
 
-func (l1 Line) intersect(l2 Line, fn func(p Point) int) bool {
-	a0, a1 := min(fn(l1.p0), fn(l1.p1)), max(fn(l1.p0), fn(l1.p1))
-	b0, b1 := min(fn(l2.p0), fn(l2.p1)), max(fn(l2.p0), fn(l2.p1))
-	return b0 <= a1 && b1 >= a0
+func (b Brick) Down(n int) Brick {
+	b.z[0] -= n
+	b.z[1] -= n
+	return b
 }
-
-func (l Line) Z() int {
-	return min(l.p0.z, l.p1.z)
-}
-
-func (l Line) MaxZ() int {
-	return max(l.p0.z, l.p1.z)
-}
-
-func (l Line) Down(n int) Line {
-	l.p0.z -= n
-	l.p1.z -= n
-	return l
-}
-func (l Line) String() string {
-	return fmt.Sprintf("%s~%s", l.p0, l.p1)
-}
-
-type Point struct {
-	x, y, z int
-}
-
-func (p Point) String() string {
-	return fmt.Sprintf("(%d,%d,%d)", p.x, p.y, p.z)
+func (b Brick) String() string {
+	return fmt.Sprintf("(%d,%d,%d)~(%d,%d,%d)", b.x[0], b.y[0], b.z[0], b.x[1], b.y[1], b.z[1])
 }
 
 var example = `1,0,1~1,2,1
