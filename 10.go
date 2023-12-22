@@ -5,263 +5,163 @@ package main
 import (
 	"fmt"
 	"strings"
-
-	"golang.org/x/exp/maps"
 )
 
 func main() {
-	// Complex number 1+0j
-	// First number represents the x, left to right
-	// Second represents the y, top to bottom.
-	// When multiplying direction with 1i, it rotates 90 degree clockwise
-	// When multiplying direction with -1i, it rotates 90 degree anti-clockwise
-	// complex(i, j), real(c), imag(c)
-	fmt.Println(solve(parse(example)))  // 4, 16
-	fmt.Println(solve(parse(example2))) // 8, 8
-	fmt.Println(solve(parse(example3))) // 4
-	fmt.Println(solve(parse(example4))) // 70, 8
-	fmt.Println(solve(parse(example5))) // 80, 10
-	fmt.Println(solve(parse(input)))    // part 1: 6697, part 2:  423
+	fmt.Println(solve(example).steps / 2)  // 4
+	fmt.Println(solve(example2).steps / 2) // 8
+	fmt.Println(solve(input).steps / 2)    // 6697
+	fmt.Println(part2(example3))           // 4
+	fmt.Println(part2(input))              // 423
 }
 
-func orientation(c complex128) rune {
-	r, i := real(c), imag(c)
-	if r == 1 {
-		return 'r'
-	}
-	if r == -1 {
-		return 'l'
-	}
-	if i == 1 {
-		return 'd'
-	}
-
-	if i == -1 {
-		return 'u'
-	}
-	panic("invalid")
+func part2(in string) int {
+	s := solve(in)
+	s.edges = append(s.edges[len(s.edges)-1:], s.edges...)
+	// Pick's theorem.
+	return shoelace(s.edges) - s.steps/2 + 1
 }
 
-// Key is "cur|dir|next"
-// c: clockwise, a: anticlockwise, s: straight
-var mappings = map[string]rune{
-	// F to right
-	"Fr-": 's',
-	"Fr7": 'c',
-	"FrJ": 'a',
-	// F to down
-	"Fd|": 's',
-	"FdL": 'a',
-	"FdJ": 'c',
-	// - to right
-	"-r7": 'c',
-	"-rJ": 'a',
-	"-r-": 's',
-	// - to left
-	"-lF": 'a',
-	"-lL": 'c',
-	"-l-": 's',
-	// 7 to bottom
-	"7d|": 's',
-	"7dJ": 'c',
-	"7dL": 'a',
-	// 7 to left
-	"7l-": 's',
-	"7lF": 'a',
-	"7lL": 'c',
-	// J to left
-	"Jl-": 's',
-	"JlL": 'c',
-	"JlF": 'a',
-	// J to top
-	"Ju|": 's',
-	"Ju7": 'a',
-	"JuF": 'c',
-	// L to top
-	"Lu|": 's',
-	"LuF": 'c',
-	"Lu7": 'a',
-	// L to right
-	"Lr-": 's',
-	"Lr7": 'c',
-	"LrJ": 'a',
-	// | to top
-	"|uF": 'c',
-	"|u7": 'a',
-	"|u|": 's',
-	// | to bottom
-	"|dJ": 'c',
-	"|dL": 'a',
-	"|d|": 's',
+func shoelace(p []Vec2D) int {
+	// Shoelace formula
+	// https://en.wikipedia.org/wiki/Shoelace_formula
+	var sum int
+	for i := 0; i < len(p)-1; i++ {
+		sum += p[i].x*p[i+1].y - p[i].y*p[i+1].x
+	}
+	if sum < 0 {
+		sum = -sum
+	}
+
+	return sum / 2
 }
 
-var directions = []complex128{
-	1 + 0i,  // right
-	-1 + 0i, // left
-	0 - 1i,  // up
-	0 + 1i,  // down
-}
+func solve(in string) state {
+	m := NewMap(in)
 
-func solve(m map[complex128]rune) (part1, part2 int) {
-	var paths map[complex128]bool
-	var history []History
-	for k, v := range m {
-		if v != 'S' {
+	start := m.Start()
+	q := []state{
+		{start, Vec2D{0, 1}, 0, nil},
+		{start, Vec2D{0, -1}, 0, nil},
+		{start, Vec2D{1, 0}, 0, nil},
+		{start, Vec2D{-1, 0}, 0, nil},
+	}
+
+	for len(q) > 0 {
+		var s state
+		s, q = q[0], q[1:]
+
+		pos, dir, ok := move(m, s.pos, s.dir)
+		if !ok {
 			continue
 		}
 
-		for _, guess := range "|-7JLF" {
-			for _, dir := range directions {
-				mc := maps.Clone(m)
-				mc[k] = guess
+		// When the direction change, there's an edge.
+		if isEdge := dir != s.dir; isEdge {
+			s.edges = append(s.edges, pos)
+		}
+		s.pos = pos
+		s.dir = dir
+		s.steps++
 
-				// Starting point.
-				start := k
-				dir := dir
+		if m[pos] == 'S' {
+			s.edges = append(s.edges, pos)
+			return s
+		}
+		q = append(q, s)
+	}
 
-				visited := make(map[complex128]bool)
-				visited[start] = true
-				tmp := []History{History{start, dir}}
+	return state{}
+}
 
-				// While there are direction, keep moving until you reach the loop.
-				for {
-					// Get the list of possible moves given the direction.
-					n := fmt.Sprintf("%s%s%s",
-						string(mc[start]),
-						string(orientation(dir)),
-						string(mc[start+dir]),
-					)
-					o, ok := mappings[n]
-					if !ok {
-						break
-					}
-					start += dir
-					if o == 'c' { // clockwise
-						dir *= 1i
-					} else if o == 'a' { // anti-clockwise
-						dir *= -1i
-					}
+type state struct {
+	pos   Vec2D
+	dir   Vec2D
+	steps int
+	edges []Vec2D
+}
 
-					tmp = append(tmp, History{start, dir})
-					visited[start] = true
+func move(m Map, pos, dir Vec2D) (newPos, newDir Vec2D, ok bool) {
+	newPos = Vec2D{
+		x: pos.x + dir.x,
+		y: pos.y + dir.y,
+	}
 
-					// We have reached the loop.
-					if start == k {
-						paths = visited
-						history = tmp
-						break
-					}
-				}
-			}
+	r := m[newPos]
+	switch r {
+	case '/':
+		if dir.x != 0 {
+			newDir = Vec2D{0, -dir.x}
+			return newPos, newDir, true
+		}
+		if dir.y != 0 {
+			newDir = Vec2D{-dir.y, 0}
+			return newPos, newDir, true
+		}
+	case '\\':
+		if dir.x != 0 {
+			newDir = Vec2D{0, dir.x}
+			return newPos, newDir, true
+		}
+		if dir.y != 0 {
+			newDir = Vec2D{dir.y, 0}
+			return newPos, newDir, true
+		}
+
+	case '|':
+		if dir.y != 0 {
+			return newPos, dir, true
+		}
+	case '-':
+		if dir.x != 0 {
+			return newPos, dir, true
+		}
+	case 'S':
+		return newPos, dir, true
+	default:
+	}
+
+	return pos, dir, false
+}
+
+type Vec2D struct {
+	x, y int
+}
+
+type Map map[Vec2D]rune
+
+func (m Map) Start() Vec2D {
+	for p, c := range m {
+		if c == 'S' {
+			return p
 		}
 	}
 
-	inside := look(m, paths, history, 1i)
-	outside := len(m) - len(paths) - look(m, paths, history, -1i)
-
-	count := len(paths)
-	if count%2 == 1 {
-		count++
-	}
-	return count / 2, (inside + outside) / 2
+	panic("no start found")
 }
 
-func look(m map[complex128]rune, paths map[complex128]bool, history []History, dir complex128) int {
-	seen := make(map[complex128]bool)
-	for _, hist := range history {
-		// Look left or right (toward the inside)
-		// If this doesn't work, multiply by -1i.
-		dir := hist.dir * dir
-		next := hist.pos
-		for {
-			next += dir
-			if _, ok := m[next]; !ok {
-				break
-			}
-			if paths[next] {
-				break
-			}
-			if seen[next] {
-				break
-			}
-			seen[next] = true
-		}
-	}
+func NewMap(in string) Map {
+	m := make(Map)
 
-	// Backfill.
-	for p := range seen {
-		pos := []complex128{p}
+	// We replace the complicated symbols with simpler ones.
+	mappings := make(map[rune]rune)
+	mappings['L'] = '\\'
+	mappings['J'] = '/'
+	mappings['7'] = '\\'
+	mappings['F'] = '/'
 
-		for len(pos) > 0 {
-			var head complex128
-			head, pos = pos[0], pos[1:]
-			for _, dir := range directions {
-				next := head + dir
-				if _, ok := m[next]; !ok {
-					continue
-				}
-				if paths[next] {
-					continue
-				}
-				if seen[next] {
-					continue
-				}
-				seen[next] = true
-				pos = append(pos, next)
-			}
-		}
-	}
-
-	//draw(m, paths, seen)
-	return len(seen)
-}
-
-type History struct {
-	pos complex128
-	dir complex128
-}
-
-func draw(m map[complex128]rune, walls map[complex128]bool, inner map[complex128]bool) {
-	var maxX, maxY, minX, minY int
-	for k := range m {
-		minX = min(minX, int(real(k)))
-		minY = min(minY, int(imag(k)))
-		maxX = max(maxX, int(real(k)))
-		maxY = max(maxY, int(imag(k)))
-	}
-
-	for i := minX; i < maxY+1; i++ {
-		for j := minY; j < maxX+1; j++ {
-			p := complex(float64(j), float64(i))
-			if walls[p] {
-				c := m[p]
-				//if c == 'L' || c == 'J' || c == '7' || c == 'F' {
-				//fmt.Print(string('+'))
-				//} else {
-				fmt.Print(string(c))
-			} else if inner[p] {
-				fmt.Print("*")
-			} else {
-				if v, ok := m[p]; !ok {
-					fmt.Print(string('.'))
-				} else {
-					fmt.Print(string(v))
-				}
-			}
-		}
-		fmt.Println()
-	}
-}
-
-func parse(in string) map[complex128]rune {
-	res := make(map[complex128]rune)
 	for y, line := range strings.Split(in, "\n") {
-		for x, char := range line {
-			res[complex(float64(x), float64(y))] = char
+		for x, c := range line {
+			p := Vec2D{x, y}
+			if v, ok := mappings[c]; ok {
+				m[p] = v
+			} else {
+				m[p] = c
+			}
 		}
 	}
 
-	return res
+	return m
 }
 
 var example = `.....
@@ -269,13 +169,11 @@ var example = `.....
 .|.|.
 .L-J.
 .....`
-
 var example2 = `..F7.
 .FJ|.
 SJ.L7
 |F--J
 LJ...`
-
 var example3 = `...........
 .S-------7.
 .|F-----7|.
@@ -285,29 +183,6 @@ var example3 = `...........
 .|..|.|..|.
 .L--J.L--J.
 ...........`
-
-var example4 = `.F----7F7F7F7F-7....
-.|F--7||||||||FJ....
-.||.FJ||||||||L7....
-FJL7L7LJLJ||LJ.L-7..
-L--J.L7...LJS7F-7L7.
-....F-J..F7FJ|L7L7L7
-....L7.F7||L7|.L7L7|
-.....|FJLJ|FJ|F7|.LJ
-....FJL-7.||.||||...
-....L---J.LJ.LJLJ...`
-
-var example5 = `FF7FSF7F7F7F7F7F---7
-L|LJ||||||||||||F--J
-FL-7LJLJ||||||LJL-77
-F--JF--7||LJLJ7F7FJ-
-L---JF-JLJ.||-FJLJJ7
-|F|F-JF---7F7-L7L|7|
-|FFJF7L7F-JF7|JL---7
-7-L-JL7||F7|L7F-7F7|
-L.L7LFJ|||||FJL7||LJ
-L7JLJL-JLJLJL--JLJ.L`
-
 var input = `F7---|FJ-L-|7-7F-7.F7|-|F-L7F7--7F---FJ7-F-F.FF.J---|77--7FF-7.-7-|.7FF-77F|77.|7-FF7FJFJ7-7FF77L77F7-F.|FFJ.-|-77.JFF-|J-|F|77F77.F7-F7-FF7
 LF7J.L7J7LFJF.FL-|-|LL.L7LL7-|7JFL|FJ.|.7.LL7J--JJ.LL-J7|JF|FJ7.F7---7J-|F|J77..7FJJ||F-7|.LFJ-F7--F7-L.LFJF77|LJF7--7.L7LF7L-7L777JFJ|FFL7-
 |J|.FL7F7.L-7-77.F.|..LFL.LJ-J-77.L-|-..F7LLJF|.F.FF--7FFF-JL7FF7J.|L-77L7L|.FFLLJ7.JFL-F77..FLJ||.LF7J7F.F7.F--FL77LJ7F|.J7L|L7LLF-7-F7FJ|L
