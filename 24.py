@@ -1,12 +1,10 @@
-# My solution using ortools
-
 from ortools.sat.python import cp_model
+from ortools.linear_solver import pywraplp
 from timeit import default_timer as timer
 import sys
 
-model = cp_model.CpModel()
-
 input = """19, 13, 30 @ -2,  1, -2
+18, 19, 22 @ -1, -1, -2
 20, 25, 34 @ -2, -2, -4
 12, 31, 28 @ -1, -2, -1
 20, 19, 15 @  1, -5, -3"""
@@ -320,11 +318,50 @@ for line in input.split("\n"):
     hailstones.append(hailstone)
 
 
+LOG_SEARCH_PROGRESS = False
+MIN = 200000000000000
+MAX = 400000000000000
+
+count = 0
+n = len(hailstones)
+for i in range(n):
+    for j in range(i + 1, n):
+        solver = pywraplp.Solver.CreateSolver("GLOP")
+        if not solver:
+            raise Exception("unknown solver")
+        a = hailstones[i]
+        b = hailstones[j]
+
+        infinity = solver.infinity()
+        t0 = solver.NumVar(0, infinity, "t0")
+        t1 = solver.NumVar(0, infinity, "t1")
+        ax = a[0] + t0 * a[3]
+        ay = a[1] + t0 * a[4]
+        bx = b[0] + t1 * b[3]
+        by = b[1] + t1 * b[4]
+        solver.Add(ax >= MIN)  # x + dx * t >= MIN
+        solver.Add(ax <= MAX)  # x + dx * t <= MIN
+        solver.Add(ay >= MIN)  # y + dy * t >= MIN
+        solver.Add(ay <= MAX)  # y + dy * t <= MAX
+        solver.Add(bx >= MIN)
+        solver.Add(bx <= MAX)
+        solver.Add(by >= MIN)
+        solver.Add(by <= MAX)
+
+        solver.Add(ax == bx)
+        solver.Add(ay == by)
+        status = solver.Solve()
+
+        count += status in [pywraplp.Solver.OPTIMAL, pywraplp.Solver.FEASIBLE]
+
+print("Part 1:", count)
+
 upper_bound = int(sys.maxsize // 1e4)
 lower_bound = -upper_bound - 1
 
 print(upper_bound, lower_bound)
 
+model = cp_model.CpModel()
 x = model.NewIntVar(0, upper_bound, "x")
 y = model.NewIntVar(0, upper_bound, "y")
 z = model.NewIntVar(0, upper_bound, "z")
@@ -360,13 +397,13 @@ for i, (hx, hy, hz, hdx, hdy, hdz) in enumerate(hailstones):
 
 
 solver = cp_model.CpSolver()
-solver.parameters.log_search_progress = True
+solver.parameters.log_search_progress = LOG_SEARCH_PROGRESS
 status = solver.Solve(model)
 start = timer()
 
 if status == cp_model.OPTIMAL or status == cp_model.FEASIBLE:
     print(
-        "x = %i, y = %i, z = %i, dx = %i, dy = %i, dz = %i sum = %i"
+        "Part 2: x = %i, y = %i, z = %i, dx = %i, dy = %i, dz = %i sum = %i"
         % (
             solver.Value(x),
             solver.Value(y),
