@@ -1,6 +1,6 @@
+# Usage:
+# python main.py < data.txt
 import sys
-from copy import deepcopy
-
 
 matrices: list[list[list[str]]] = []
 lines: list[list[str]] = []
@@ -19,51 +19,30 @@ def rotate_90_deg_clockwise(mat):
     return [list(row)[::-1] for row in zip(*mat)]
 
 
-def reflection_score(mat):
-    scores = []
+def reflection_score(mat, diff=0):
     for m, mul in [(mat, 100), (rotate_90_deg_clockwise(mat), 1)]:
         n = len(m)
-        for mid in range(n):
-            valid = True
-            epoch = 0
-            for i, j in zip(range(n), range(1, n + 1)):
-                if mid - i < 0 or mid + j >= n:
-                    break
-                epoch += 1
-                valid = m[mid - i] == m[mid + j]
-                if not valid:
-                    break
-            if valid and epoch:
-                scores.append((mid + 1) * mul)
-    return scores
+        for mid in range(1, n):
+            top = m[:mid]
+            btm = m[mid:]
+            lim = min(len(top), len(btm))
+
+            top = top[-lim:]
+            btm = btm[:lim]
+
+            assert len(top) > 0
+            assert len(btm) > 0
+            assert len(top) == len(btm)
+
+            delta = 0
+            for i, j in zip(top, reversed(btm)):
+                delta += sum(t != b for t, b in zip(i, j))
+            if delta == diff:
+                return mid * mul
 
 
-total = sum([reflection_score(mat)[0] for mat in matrices])
-print("Part 1:", total)
+total = sum([reflection_score(mat) for mat in matrices])
+print("Part 1:", total)  # 35360
 
-
-total = 0
-for mat in matrices:
-    old_score = reflection_score(mat)
-
-    found = False
-    r, c = len(mat), len(mat[0])
-    for i in range(r):
-        for j in range(c):
-            mat2 = deepcopy(mat)
-            # Invert.
-            mat2[i][j] = "#" if mat2[i][j] == "." else "."
-
-            new_score = reflection_score(mat2)
-            if new_score is None:
-                continue
-            if (delta := set(new_score) - set(old_score)) and len(delta) > 0:
-                total += list(delta)[0]
-                found = True
-                break
-        if found:
-            break
-    if not found:
-        total += old_score
-
-print("Part 2:", total)
+total = sum([reflection_score(mat, diff=1) for mat in matrices])
+print("Part 2:", total)  # 36755
