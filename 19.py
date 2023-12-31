@@ -1,29 +1,35 @@
 # Usage:
 # python main.py < data.txt
 import re
+from typing import TypedDict
 from dataclasses import dataclass
 import sys
 from copy import deepcopy
 
+class Part(TypedDict):
+    x: int
+    m: int
+    a: int
+    s: int
 
 @dataclass
 class Rule:
-    def __init__(self, rule):
+    def __init__(self, rule: str):
         cond, next = rule.split(":")
         self.rule = cond
         self.next = next
 
-    def __call__(self, input):
-        return eval(self.rule, {}, input)
+    def __call__(self, part: Part):
+        return eval(self.rule, {}, part)
 
     def __repr__(self):
         return f"Rule({self.rule}:{self.next})"
 
-    def calibrate(self, input):
+    def calibrate(self, part: Part):
         key, val = re.split(r'<|>', self.rule)
         val = int(val)
-        lhs = deepcopy(input)
-        rhs = deepcopy(input)
+        lhs = deepcopy(part)
+        rhs = deepcopy(part)
         if '<' in self.rule:
             lhs[key][1] = val-1
             rhs[key][0] = val
@@ -35,34 +41,34 @@ class Rule:
 
 @dataclass
 class Workflow:
-    def __init__(self, wf):
+    def __init__(self, wf: str):
         (name, rest,) = wf.split("{")
-        rest = rest.split("}")[0]
+        rest = rest[:-1]
 
         self.name = name
-        *ifs, els = rest.split(",")
-        self.ifs = list(map(Rule, ifs))
-        self.els = els
+        *rules, fallback = rest.split(",")
+        self.rules = list(map(Rule, rules))
+        self.fallback = fallback
 
-    def __call__(self, input):
-        for rule in self.ifs:
-            if rule(input):
+    def __call__(self, part: Part):
+        for rule in self.rules:
+            if rule(part):
                 return rule.next
-        return self.els
 
-    def calibrate(self, input):
+        return self.fallback
+
+    def calibrate(self, part: Part):
         result = []
-        inp = input
-        for rule in self.ifs:
-            lhs, rhs = rule.calibrate(inp)
-            inp = deepcopy(rhs)
+        for rule in self.rules:
+            lhs, rhs = rule.calibrate(part)
+            part = rhs
             result.append((lhs, rule.next))
 
-        result.append((inp, self.els))
+        result.append((part, self.fallback))
         return result
 
     def __repr__(self):
-        return f"Workflow({self.name},rules={self.ifs},else={self.els})"
+        return f"Workflow({self.name},rules={self.rules},else={self.fallback})"
 
 
 @dataclass
@@ -71,60 +77,60 @@ class Workflows:
         self.wfs = {wf.name: wf for wf in wfs}
         assert len(wfs) == len(self.wfs), 'unique name'
 
-    def __call__(self, input):
+    def __call__(self, part):
         name = "in"
 
         while True:
             wf = self.wfs[name]
-            out = wf(input)
+            out = wf(part)
             match out:
                 case 'R' | 'A':
                     return out == 'A'
                 case next_wf:
                     name = next_wf
 
-    def calibrate(self, input):
-        total = 0
-        q = [(input, self.wfs['in'])]
+    def calibrate(self, part: Part):
+        result = []
+        q = [(part, self.wfs['in'])]
         while len(q):
             inp, wf = q.pop()
             opt = wf.calibrate(inp)
             for out, next_wf in opt:
                 match next_wf:
                     case 'A':
-                        t = 1
-                        for a, b in out.values():
-                            assert b > a, 'invalid range'
-                            # The +1 is because the range is inclusive.
-                            t *= (b - a) + 1 
-                        total += t
+                        result.append(out)
                     case 'R':
                         continue
                     case next_wf:
                         q.append((out, self.wfs[next_wf]))
-        return total
+        return result
 
 
-workflows: list[Workflow] = []
-inputs = []
-is_wf = True
+def calculate_combinations(parts: list[Part]) -> int:
+    total = 0
+    for part in parts:
+        n = 1
+        for lo, hi in part.values():
+            # The +1 is because the range is inclusive.
+            # Say you have value from 1-5, the range is 5-1+1 = 5.
+            n *= hi - lo + 1
+        total += n
+    return total
+
+
+section = '\n'.join([line.strip() for line in sys.stdin] )
+top, btm = section.split('\n\n')
+
 keys = list('xmas')
-for line in sys.stdin:
-    line = line.strip()
-    if line == "":
-        is_wf = False
-        continue
-    if is_wf:
-        workflows.append(Workflow(line))
-    else:
-        digits = map(int, re.findall(r"\d+", line))
-        inputs.append(dict(zip(keys, digits)))
+parts: list[Part] = [dict(zip(keys, map(int, re.findall(r"\d+", line)))) for line in btm.split('\n')]
+wfs: Workflows = Workflows([Workflow(line) for line in top.split('\n')])
 
 
-wfs = Workflows(workflows)
-print('Part 1:', sum(sum(input.values()) if wfs(input) else 0 for input in inputs)) 
+print('Part 1:', sum(sum(part.values()) if wfs(part) else 0 for part in parts)) 
 # Part 1: 19114, 434147
 
+
+
 inp = {k: [1, 4000] for k in keys}
-print('Part 2:', wfs.calibrate(inp))
+print('Part 2:', calculate_combinations(wfs.calibrate(inp)))
 # Part 2: 167409079868000, 136146366355609
